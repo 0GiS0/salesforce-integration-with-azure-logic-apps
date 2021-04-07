@@ -1,0 +1,103 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflow_name": {
+            "defaultValue": "from-salesforce-to-azure",
+            "type": "String"
+        },
+        "location": {
+            "type": "String"
+        },
+        "api_connections_resource_group": {
+            "type": "String"
+        },
+        "api_connections_location": {
+            "type": "String"
+        },
+        "recipients": {
+            "type": "String"
+        }
+    },
+    "variables": {
+        "connections_office365_externalid": "[concat(subscription().id,'/resourceGroups/',parameters('api_connections_resource_group'),'/providers/Microsoft.Web/connections/office365')]",
+        "connections_salesforce_externalid": "[concat(subscription().id,'/resourceGroups/',parameters('api_connections_resource_group'),'/providers/Microsoft.Web/connections/salesforce')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflow_name')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "When_a_record_is_created": {
+                            "recurrence": {
+                                "frequency": "Minute",
+                                "interval": 1
+                            },
+                            "splitOn": "@triggerBody()?['value']",
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['salesforce']['connectionId']"
+                                    }
+                                },
+                                "method": "get",
+                                "path": "/datasets/default/tables/@{encodeURIComponent(encodeURIComponent('Contact'))}/onnewitems"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Send_an_email_(V2)": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "body": {
+                                    "Body": "<p><strong>Nombre</strong>: @{triggerBody()?['FirstName']}<br>\n<strong>Apellidos</strong>: @{triggerBody()?['LastName']}</p>",
+                                    "Subject": "Nuevo contacto creado",
+                                    "To": "[parameters('recipients')]"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['office365']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/v2/Mail"
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "office365": {
+                                "connectionId": "[variables('connections_office365_externalid')]",
+                                "connectionName": "office365",
+                                "id": "[concat(subscription().id,'/providers/Microsoft.Web/locations/',parameters('api_connections_location'),'/managedApis/office365')]"
+                            },
+                            "salesforce": {
+                                "connectionId": "[variables('connections_salesforce_externalid')]",
+                                "connectionName": "salesforce",
+                                "id": "[concat(subscription().id,'/providers/Microsoft.Web/locations/',parameters('api_connections_location'),'/managedApis/salesforce')]"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

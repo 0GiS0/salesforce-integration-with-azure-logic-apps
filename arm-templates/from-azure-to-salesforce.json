@@ -1,0 +1,109 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workflow_name": {
+            "defaultValue": "from-azure-to-salesforce",
+            "type": "String"
+        },
+        "api_connections_location": {
+            "type": "String"
+        },
+        "api_connections_resource_group": {
+            "type": "String"
+        },
+        "location": {
+            "type": "String"
+        }
+    },
+    "variables": {
+        "connections_salesforce_externalid": "[concat(subscription().id,'/resourceGroups/',parameters('api_connections_resource_group'),'/providers/Microsoft.Web/connections/salesforce')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflow_name')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "manual": {
+                            "type": "Request",
+                            "kind": "Http",
+                            "inputs": {
+                                "schema": {
+                                    "properties": {
+                                        "lastName": {
+                                            "type": "string"
+                                        },
+                                        "name": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Create_record": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "body": {
+                                    "FirstName": "@triggerBody()?['name']",
+                                    "LastName": "@triggerBody()?['lastName']"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['salesforce']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/v2/datasets/default/tables/@{encodeURIComponent(encodeURIComponent('Contact'))}/items"
+                            }
+                        },
+                        "Response": {
+                            "runAfter": {
+                                "Create_record": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "Response",
+                            "kind": "Http",
+                            "inputs": {
+                                "body": {
+                                    "name": "@body('Create_record')?['FirstName']"
+                                },
+                                "statusCode": 200
+                            }
+                        }
+                    },
+                    "outputs": {
+                    }
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "salesforce": {
+                                "connectionId": "[variables('connections_salesforce_externalid')]",
+                                "connectionName": "salesforce",
+                                "id": "[concat(subscription().id,'/providers/Microsoft.Web/locations/',parameters('api_connections_location'),'/managedApis/salesforce')]"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}
